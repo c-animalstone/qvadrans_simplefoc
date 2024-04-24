@@ -1,80 +1,68 @@
-#include <Arduino.h>
+// Open loop motor control example
 #include <SimpleFOC.h>
+
 
 //#define DebugSerial Serial
 HardwareSerial Serial1(PB7, PB6);  // uart1
 #define DebugSerial Serial1
-// HardwareSerial Serial3(PB11, PB10);   // uart3
-// #define DebugSerial Serial3
+
 
 BLDCMotor motor = BLDCMotor(7);
 BLDCDriver6PWM driver = BLDCDriver6PWM(PA8, PB13, PA9, PB14, PA10, PB15);
 
-MagneticSensorI2C sensor = MagneticSensorI2C(AS5600_I2C);
 
-// LED Blinking
-bool blinkstate;
-u_int32_t last_blink;
-u_int16_t blinktime = 300;
+//target variable
+float target_velocity = 0;
 
-Commander command = Commander(DebugSerial);
-bool monitoring_var = false; // bool to toggle debug printing
-bool* var_ref = &monitoring_var;
-void toggle_monitoring(char* str){
-  *var_ref = !*var_ref;
-  if (*var_ref) { DebugSerial.println("monitoring enabled"); } else { DebugSerial.println("monitoring disabled"); }
-}
-void doMotor(char* cmd) { command.motor(&motor, cmd); }
-void mdisable(char* cmd) { motor.disable(); DebugSerial.println("motor disabled"); blinktime = 600;}
-void menable(char* cmd) { motor.enable(); DebugSerial.println("motor enabled"); blinktime = 300;}
+// instantiate the commander
+Commander command = Commander(Serial1);
+void doTarget(char* cmd) { command.scalar(&target_velocity, cmd); }
+void doLimit(char* cmd) { command.scalar(&motor.voltage_limit, cmd); }
 
 void setup() {
-  pinMode(PC11, OUTPUT);  // LED_BUILTIN
 
-  DebugSerial.begin(115200);
-  SimpleFOCDebug::enable(&DebugSerial);
-  delay(500);
-  SIMPLEFOC_DEBUG("Startup");
-  
-  SIMPLEFOC_DEBUG("Setup Complete");
+  Serial1.begin(115200);
+  Serial1.println("Hello!");
+
+  // driver config
+  // power supply voltage [V]
+  driver.voltage_power_supply = 24;
+  // limit the maximal dc voltage the driver can set
+  // as a protection measure for the low-resistance motors
+  // this value is fixed on startup
+  driver.voltage_limit = 12;
+  driver.init();
+  // link the motor and the driver
+  motor.linkDriver(&driver);
+
+  // limiting motor movements
+  // limit the voltage to be set to the motor
+  // start very low for high resistance motors
+  // current = voltage / resistance, so try to be well under 1Amp
+  motor.voltage_limit = 4;   // [V]
+ 
+  // open loop control config
+  motor.controller = MotionControlType::velocity_openloop;
+
+  // init motor hardware
+  motor.init();
+
+  // add target command T
+  command.add('T', doTarget, "target velocity");
+  command.add('L', doLimit, "voltage limit");
+
+  Serial1.println("Motor ready!");
+  Serial1.println("Set target velocity [rad/s]");
   _delay(1000);
-
 }
 
-
 void loop() {
-  motor.loopFOC();    // main FOC algorithm function
-		
-  motor.move();   // Motion control function
-  
 
-  if (monitoring_var){
-    motor.monitor();
-  }
+  // open loop velocity movement
+  // using motor.voltage_limit and motor.velocity_limit
+  // to turn the motor "backwards", just set a negative target_velocity
+  motor.move(target_velocity);
 
-  command.run();  // commander interface
-
-  if ((millis() - last_blink) > blinktime){
-    digitalWrite(PC11, blinkstate);
-    blinkstate = !blinkstate;
-    last_blink = millis();
-  }
-
-  // Blink to visibly show hangs
-  // digitalWrite(PC11, HIGH);  // PC11
-  // SIMPLEFOC_DEBUG("High");
-  
-  // // i2C test - monitor sensor value
-  // sensor.update();
-  // SIMPLEFOC_DEBUG("Angle: ",sensor.getAngle());
-  // delay(1000);
-  
-  // digitalWrite(PC11, LOW);
-  // SIMPLEFOC_DEBUG("Low");
-  // delay(1000);
-
-  // // RX test - echo
-  // if (DebugSerial.available()){
-  //   DebugSerial.println(DebugSerial.readString()); 
-  // }
+  // user communication
+  command.run();
 }
