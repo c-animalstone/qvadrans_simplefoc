@@ -16,8 +16,12 @@ float target_velocity = 0;
 
 // instantiate the commander
 Commander command = Commander(Serial1);
-void doTarget(char* cmd) { command.scalar(&target_velocity, cmd); }
-void doLimit(char* cmd) { command.scalar(&motor.voltage_limit, cmd); }
+void doTarget(char* cmd) {
+  command.scalar(&target_velocity, cmd);
+}
+void doLimit(char* cmd) {
+  command.scalar(&motor.voltage_limit, cmd);
+}
 
 void setup() {
 
@@ -39,8 +43,8 @@ void setup() {
   // limit the voltage to be set to the motor
   // start very low for high resistance motors
   // current = voltage / resistance, so try to be well under 1Amp
-  motor.voltage_limit = 4;   // [V]
- 
+  motor.voltage_limit = 4;  // [V]
+
   // open loop control config
   motor.controller = MotionControlType::velocity_openloop;
 
